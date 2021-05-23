@@ -1,0 +1,124 @@
+//This program pairs with a complex circuit to read the temperature of a room accurate to .05 degrees Fahrenheit using a thermistor
+//This code can be imported into Arduino to read analog voltages
+
+//Summary: Inputs resistance, converts to analog voltage, converts analog voltage to F and C temp. vals, displays data and rate of change in temp every 10 secs
+
+
+
+double Ctemp;     //holds value for Celsius temperature
+double Ftemp;     //holds value for fahrenheit temperature
+float tempV;      //temporary voltage used for 16 volt sampling
+float sensorValue;  //raw analog voltage from A0, pre-modified (0-1023)
+float voltage;      //final voltage value (1-5)
+
+float ROC =  0.0;   //rate of change declared and initialized at 0
+float ROC_temp;     //a variable to hold the previous iteration temperature. 
+
+volatile int timer = 0;     //used in the 1-second interrupt to count 10 seconds
+int loopcounter;            //"splits" program into two, creates the ability to hold previous and current values
+                     
+#include <stdio.h>      
+#include <math.h>       
+
+void setup() {
+  // put your setup code here, to run once:
+  Serial.begin(9600);
+  
+  TCCR1A = 0b00000000;      //Timer setup
+  TCCR1B = 0b00000100;
+  TCNT1 = 3036;             //1 second
+  cli();                    //clear interrupts
+  TIMSK1 = 0b00000001;      //Timer overflow interrupt 1
+  sei();                    //set interrupts
+}
+
+void loop() {
+  // put your main code here, to run repeatedly:
+  
+  for(int i = 0; i < 15; i++){              //sampling for loop for 16 voltage averaging
+    sensorValue = analogRead(A0);           //reading analog voltage through pin A0
+    tempV = sensorValue * 5.0 / 1023.0;     //convert the analog reading (which goes from 0 - 1023) to a voltage (0 - 5V):
+    voltage = tempV + voltage;              //Averaging by adding
+    
+  }
+    voltage = voltage / 16.0;               //averaging by dividing
+    voltage = voltage + 0.012;              //slight offset in voltage/multimeter accuracy - fixed by adding .012
+
+ //If-statements that correspond to the voltage ranges from the split up graphs create in the excel file
+  
+  //Log function 1: -44C to -16C,     0V to 0.47V
+  //y = 21.295ln(x) - 0.3121 with an accuracy (R^2) of 0.9997
+  if(voltage < 0.47){
+    Ctemp = 21.295*log(voltage) - 0.3121;
+    Ftemp = (Ctemp * 1.8) + 32; 
+  }
+
+  //Log function 2:  -9C to -1C         23.361ln(x) + 1.1586 
+  if((voltage > 0.47) && (voltage <=0.9)){
+    Ctemp = 23.361*log(voltage) + 1.1586;
+    Ftemp = (Ctemp * 1.8) + 32; 
+  }
+
+  //Log function 3: 0C to 13C  22.653x - 20.19     
+  if((voltage > 0.9) && (voltage <= 1.49)){
+  Ctemp = 22.653*(voltage) - 20.19;
+  Ftemp = (Ctemp * 1.8) + 32; 
+   }
+  
+  //Log function 4: 14C to 36C 15.505x - 9.1718,    
+  if((voltage > 1.49) && (voltage <= 3.018)){
+     Ctemp = 15.505*(voltage) - 8.9;
+     Ftemp = (Ctemp * 1.8) + 32;   
+    }
+    
+  //Log function 5: 37C to 53C 13.641x - 4.2353,     
+    if((voltage > 3.018) && (voltage < 4.2353)){
+    Ctemp = 13.641*(voltage) - 6.2353;
+    Ftemp = (Ctemp * 1.8) + 32;
+  }
+
+//Log function 6: 54C to 64C
+if((voltage > 4.2354) && (voltage < 5)){
+  Ctemp = 14.181 * (voltage) - 4.9;
+  Ftemp = (Ctemp * 1.8) + 32;
+}
+
+
+
+
+
+ }
+ 
+//interrupt setup with timer 1
+ISR(TIMER1_OVF_vect){          
+    timer++;                    //increments by 1 every interrupts
+  
+    if(timer == 10){            //after 10 interrupts, (10 secs), if statement trips
+      display();                //display data (function below)
+      timer = 0;                //reset increment timer
+    }
+    
+    TCNT1 = 3036;               //reset timer counter   
+}
+
+void display(){                 //display function 
+     Serial.print("Current Temperature = ");      
+     Serial.print(Ftemp);  Serial.print("F ("); Serial.print(Ctemp);  Serial.println("C)");     //displaying strings
+     Serial.print("Rate of Temperature change = ");  
+     
+     loopcounter++;                                         //loopcounter initializes at 0, increment by 1
+     if(loopcounter == 1){          
+     Serial.print(Ftemp - ROC); Serial.println("F / sec");  //if loopcounter is 1, subtract current fahrenheit by ROC (initially 0)
+     
+     ROC_temp = Ftemp;    //set temporary rate of change to current temperature
+     }
+     
+     else if(loopcounter == 2){         //in the second loop
+      
+      ROC = (Ftemp - ROC_temp);         //rate of change is current - previous temp
+      Serial.print(ROC); Serial.println("F / sec"); //print data
+      loopcounter = 0;                  //reset counter
+      ROC = Ftemp;                      //rate of change is now current temp
+     }  
+     Serial.print("\n");
+}
