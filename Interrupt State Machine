@@ -1,0 +1,94 @@
+//Built a simple state machine with hardware interrupts to demonstrate being able to create interrupts
+
+enum {yellowLED, greenLED, redLED, startRNG}; 
+
+
+int state = startRNG;
+int isNewState;
+int prevState = !state;
+long random_timer;
+int count_down;
+
+void setup() {
+  
+  DDRB &= 0b11111110; // PB0 set as input
+  PORTB |= 0b00000001; // switch 
+  DDRD |= 0b11100000; // making LEDs inputs 
+  PORTD &= 0b00011111; // initial off LED
+
+  //given
+  TCCR1A = 0b00000000; // sets TCCR1A to normal mode no COM bits
+  TCCR1B = 0b00000100; // sets  TCCR1B to normal mode, prescaler of 256
+  TCNT1 = 34286;
+  cli();
+  TIMSK1 = 0x01; // enables overflow interrupt
+  Serial.begin(9600);
+  Serial.println("Homework 5");
+  randomSeed(analogRead(0)); // RNG
+}
+
+   
+
+void loop() {
+  isNewState = (state != prevState); 
+  prevState = state;
+ 
+  switch (state){ 
+
+
+    case startRNG: // case for the inital random time;
+      if (isNewState) {
+        Serial.println("Random/n");
+        count_down = random(0, 500); // random range within half a sec, I like having a larger range because I feel like 500ms is too slow
+        Serial.println(count_down);
+      }
+
+      delay(count_down);
+      state = yellowLED;  
+      break;
+
+    case yellowLED: // case for Yellow_State
+      if (isNewState) {
+        Serial.println("Yellow LED/n");
+        TCNT1 = 34286;
+        TIMSK1 = 0x01;
+        PORTD |= 0b01000000;
+        sei();
+        TIMSK1 = 0x01;
+      }
+      
+     if (!(PINB & 0x01)) {
+        state = greenLED;
+        TIMSK1 &= 0xFE;
+      }
+      break;
+
+    case greenLED:
+      if (isNewState) {
+        Serial.println("Green_State/n");
+        PORTD &= 0b10111111; 
+        PORTD |= 0b00100000;
+  //digitalWrite(
+      }
+      break;
+
+    case redLED:
+      if (isNewState) {
+        Serial.println("Red_State/n");
+        PORTD &= 0b10111111;
+        PORTD |= 0b10000000;
+      }
+      
+      break;
+
+
+    default: state = redLED;
+  }
+}
+
+
+
+ISR(TIMER1_OVF_vect) {
+  state = redLED;
+  TIMSK1 &= 0xFE;
+}
